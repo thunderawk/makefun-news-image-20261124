@@ -1,31 +1,41 @@
 #!/usr/bin/env python3
-"""Entry program for make.fun news-image-20261124.
+"""Entrypoint: copy entry.png (in this repo) to the output directory.
 
-Copies the pre-rendered front page (entry.png, in this repo) to
-/output/entry.png. Stdlib only, no network, deterministic.
+Stdlib only. Verifies the PNG magic bytes, then writes the file and
+prints its sha256 so the run is auditable.
 """
+
 import hashlib
 import os
-import shutil
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+import sys
 
 
 def main():
-    src = os.path.join(HERE, "entry.png")
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(here, "entry.png")
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
+    os.makedirs(out_dir, exist_ok=True)
+    dst = os.path.join(out_dir, "entry.png")
     with open(src, "rb") as f:
         data = f.read()
-    if not data.startswith(PNG_MAGIC):
-        raise SystemExit("entry.png is not a PNG")
-    os.makedirs(OUT, exist_ok=True)
-    dst = os.path.join(OUT, "entry.png")
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        print("error: entry.png is not a PNG file", file=sys.stderr)
+        return 1
+    digest = hashlib.sha256(data).hexdigest()
+    if len(data) > 1024 * 1024:
+        print("error: entry.png exceeds the 1 MiB limit", file=sys.stderr)
+        return 1
     with open(dst, "wb") as f:
         f.write(data)
-    print("entry.png %d bytes sha256 %s"
-          % (len(data), hashlib.sha256(data).hexdigest()))
+    # Read back what was written and confirm it matches byte for byte.
+    with open(dst, "rb") as f:
+        written = f.read()
+    if hashlib.sha256(written).hexdigest() != digest:
+        print("error: written file does not match entry.png", file=sys.stderr)
+        return 1
+    print(f"wrote {dst} ({len(data)} bytes, sha256 {digest})")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
